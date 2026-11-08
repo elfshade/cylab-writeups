@@ -18,6 +18,11 @@ Flags and platform tokens are redacted on purpose.
 | 3 | [buffer overflow 3](https://play.picoctf.org/) | Binary Exploitation | Medium | Custom static stack canary byte-by-byte brute-force, ret2win | [Writeup](buffer-overflow-3/README.md) |
 | 4 | [Stonks](https://play.picoctf.org/) | Binary Exploitation | Easy | Format string (`%p`) stack memory disclosure, little-endian unpacking | [Writeup](stonks/README.md) |
 | 5 | [babygame01](https://play.picoctf.org/) | Binary Exploitation | Easy | 2D array Out-Of-Bounds (OOB) write, modifying game state via negative indexing | [Writeup](babygame01/README.md) |
+| 6 | [MATRIX](https://play.picoctf.org/) | Reverse Engineering | Hard | Forth-like custom VM bytecode emulation, BFS state-space graph search | [Writeup](matrix/README.md) |
+| 7 | [Checkpass](https://learn.cylabacademy.org/) | Reverse Engineering | Hard | Stripped Rust reversing, 4-round SPN S-Box & Permutation inversion | [Writeup](checkpass/README.md) |
+| 8 | [Rolling My Own](https://learn.cylabacademy.org/) | Reverse Engineering | Hard | JIT shellcode synthesis, multithreaded OpenMP MD5 preimage mining | [Writeup](rolling-my-own/README.md) |
+| 9 | [Pico Bank](https://learn.cylabacademy.org/) | Reverse Engineering | Medium | Android Smali reversing, Dalvik virtual register reuse emulation, binary stego | [Writeup](pico-bank/README.md) |
+| 10 | [Breadth](https://play.picoctf.org/) | Reverse Engineering | Hard | Differential binary analysis (patch diffing), 16K dead-code deobfuscation | [Writeup](breadth/README.md) |
 
 ---
 

@@ -1,166 +1,37 @@
-# Pico Bank — Android Reverse Engineering & Dalvik Register Reuse Emulation
+# Pico Bank (CyLab RE — difficulty 2, id 529)
 
-**Platform:** [CyLab Security Academy](https://learn.cylabacademy.org/) / [picoCTF](https://play.picoctf.org/) (picoMini by CMU-Africa)  
-**Category:** Mobile Reverse Engineering (Android APK & Logic Steganography)  
-**Difficulty:** Medium (CyLab Difficulty 2)  
-**Tools:** `apktool`, Python 3, `urllib`  
-**Artifact:** Android Package (`pico-bank.apk`)  
+## Đề bài / file đính kèm
+- Challenge RE diff2, event "picoMini by CMU-Africa", on-demand instance.
+- Mô tả: Android app "Pico Bank"; phải crack username/password từ profile (Alex Johnson, johnson@picobank.com, DOB 14/03/1990, giao dịch cuối $345.67, pet `tricky`, màu yêu thích Blue). Flag có **2 phần**.
+- File: trang web instance phục vụ APK: `http://<host>:<port>/download/pico-bank.apk` (link APK KHÔNG nằm trong description API — chỉ xuất hiện sau khi start instance).
 
----
+## Recon
+- Start instance `api.py start 529` → description lộ link web; index page link tới `/download/pico-bank.apk` (6.6 MB).
+- `apktool d pico-bank.apk` → package `com.example.picobank`, dùng **Volley**. App classes: `Login`, `OTP`, `MainActivity`, `Transaction`, `TransactionAdapter`, `Notification`, `Splash`.
 
-## TL;DR
+## Lỗ hổng phát hiện
+- **Login client-side hardcode** (`Login$1.smali`): username `johnson` (tên cuối), password `tricky1990` (pet + năm sinh). Không hash, không gửi server.
+- **OTP hardcode** trong resource: `otp_value = 9673` (`res/values/strings.xml:158`), so sánh local, KHÔNG liên quan mạng.
+- **Chỉ 1 network call**: `POST /verify-otp` body `{"otp":"<4 số>"}` (base URL trong APK là placeholder `"your server url"` → phải lấy host:port từ instance). Response `{success, flag, hint}`; `MainActivity` KHÔNG đọc extras `flag`/`hint` ⇒ chỉ thấy trong HTTP response thô.
+- **Flag part1 giấu trong lịch sử giao dịch** (`MainActivity.smali`): trường "số tiền" của mỗi transaction là **nhị phân 7-bit** (`$ 1110000` = `0x70` = `'p'`). Đọc theo thứ tự hiển thị → `picoCTF{1_l13d_4b0ut_b31ng_`.
+  - **Bẫy register reuse**: nhiều entry (`Water Bill`, `Transport`, `Insurance`, `Vacation`, `Home Repairs`, `Charity Donation`, `Childcare`) truyền lại register (v9/v10/v11/v12) đã set ở entry khác ⇒ phải **mô phỏng gán register tuần tự** khi đọc smali, nếu chỉ regex `const-string .* "\$ [01]+"` sẽ thiếu ký tự.
 
-The challenge presents an Android banking application (`pico-bank.apk`). The flag is divided into two separate halves requiring distinct reversing vectors:
-1. **Part 1 (Static APK Steganography):** Hidden in the transaction history defined inside `MainActivity.smali`. The monetary amounts for transactions are encoded as 7-bit ASCII binary strings (`$ 1110000` = `'p'`). Importantly, compiler optimizations reuse virtual registers across transaction constructor calls, making simple regex extraction fail unless full Dalvik register assignments are sequentially emulated.
-2. **Part 2 (Dynamic API Verification):** A hardcoded OTP value (`9673`) extracted from `res/values/strings.xml` is submitted to the remote endpoint `POST /verify-otp` to receive the second half of the flag.
+## Kỹ thuật khai thác
+1. Trích số tiền theo thứ tự, mô phỏng register reuse → ghép ký tự → part1.
+2. `POST /verify-otp {"otp":"9673"}` → response chứa part2.
+3. Ghép: `academy{` + part1 + part2.
 
----
+## Exploit script
+Xem file [exploit.py](exploit.py) (parse smali có mô phỏng register + POST OTP).
 
-## Student's Learning Note: Core Concepts
+## Flag
+`academy{redacted}`
+- part1 (APK): `1_l13d_4b0ut_b31ng_`
+- part2 (server OTP): `s3cur3d_...`
 
-As a 2nd-year CS student interested in mobile application security, this challenge highlighted key aspects of the Android/Dalvik execution environment:
-
-1. **Dalvik Bytecode & Register Architecture:** Unlike x86 stack-based or general-purpose hardware register models, the Dalvik Virtual Machine (DVM/ART) uses a frame-based virtual register architecture (`v0`, `v1`, ...). Variables and intermediate constants live in these virtual registers.
-2. **Register Allocation & Liveness Optimization:** Compilers minimize register allocations by reusing dormant registers. If a register is set once and passed to multiple constructor calls across several basic blocks, a static parser must simulate register state rather than assuming each invocation contains its own literal declaration.
-3. **Android Client-Side Trust Assumptions:** Developers often mistakenly trust client-side validation (such as hardcoding valid usernames/passwords in `Login$1.smali` or storing sensitive keys in XML resource bundles).
-
----
-
-## Static Analysis & Decompilation
-
-Decompiling the APK using `apktool`:
-
-```bash
-$ apktool d -f -o dec pico-bank.apk
-I: Using Apktool 2.9.x on pico-bank.apk
-I: Loading resource table...
-I: Decoding AndroidManifest.xml with resources...
-I: Baksmaling classes.dex...
-```
-
-### 1. Client-Side Authentication Bypass
-Inspecting `smali/com/example/picobank/Login$1.smali`:
-```smali
-const-string v0, "johnson"
-const-string v1, "tricky1990"
-```
-The login mechanism is completely local. Credentials match user profile hints provided in the challenge prompt (`Alex Johnson`, pet `tricky`, born `1990`). No network requests are made during login.
-
-### 2. Hardcoded OTP in Resources
-Searching `res/values/strings.xml`:
-```xml
-<string name="otp_value">9673</string>
-```
-The OTP verification activity checks input against this static XML entry.
-
----
-
-## Vulnerability & Recovery Strategy
-
-### The Register Reuse Trap in `MainActivity.smali`
-
-Inspecting `MainActivity.smali`, the app populates a `RecyclerView` with `Transaction` objects via:
-`new Transaction(title, category, date, amount)`
-
-In Dalvik assembly:
-```smali
-const-string v9, "$ 1110000"         ; Binary for 'p' (0x70)
-...
-invoke-direct {v5, v6, v7, v8, v9}, Lcom/example/picobank/Transaction;-><init>...
-```
-
-However, later in the method:
-```smali
-; "Water Bill" transaction creation:
-; Notice that register v9 is NOT reassigned! It reuses the previously stored amount!
-invoke-direct {v5, v11, v12, v10, v9}, Lcom/example/picobank/Transaction;-><init>...
-```
-
-**The Trap:** Running a naive regex search for `const-string vN, "\$ [01]+"` extracts only uniquely assigned strings, producing missing letters and corrupted words.
-
-**The Solution:** Build a Python emulator that models Dalvik virtual registers sequentially:
-* When `const-string vX, "..."` is seen $\to$ Update `reg_map[vX] = string`.
-* When `invoke-direct {..., vAmount}, Transaction;-><init>` is seen $\to$ Read `reg_map[vAmount]`.
-* Decode each 7-bit binary string into its corresponding ASCII character.
-
----
-
-## Exploit Script
-
-Below is the automated solver (see [`exploit.py`](exploit.py)):
-
-```python
-#!/usr/bin/env python3
-# Pico Bank Solver — Python 3
-import os, re, json, urllib.request
-
-def recover_part1(smali_path):
-    with open(smali_path, "r", encoding="utf-8") as f:
-        src = f.read()
-
-    registers = {}
-    decoded = []
-    
-    re_const = re.compile(r'const-string (v\d+), "(.*?)"')
-    re_invoke = re.compile(r'invoke-direct \{([^}]+)\},\s*Lcom/example/picobank/Transaction;-><init>')
-
-    for line in src.splitlines():
-        m_const = re_const.search(line)
-        if m_const:
-            registers[m_const.group(1)] = m_const.group(2)
-            continue
-
-        m_invoke = re_invoke.search(line)
-        if m_invoke:
-            args = [a.strip() for a in m_invoke.group(1).split(",")]
-            amt = registers.get(args[3], "")
-            if amt.startswith("$ "):
-                b = amt[2:]
-                decoded.append(chr(int(b, 2)))
-                
-    return "".join(decoded)
-
-def main():
-    part1_full = recover_part1("./dec/smali_classes3/com/example/picobank/MainActivity.smali")
-    part1 = part1_full.split("{", 1)[1] if "{" in part1_full else part1_full
-    print("[+] Part 1 (APK):", part1)
-
-    # Submit OTP to obtain Part 2
-    req = urllib.request.Request(
-        "http://xebec.cylabacademy.net:39382/verify-otp",
-        data=json.dumps({"otp": "9673"}).encode(),
-        headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req) as resp:
-        data = json.loads(resp.read().decode())
-        part2 = data["flag"]
-        print("[+] Part 2 (API):", part2)
-        print(f"[+] Full Flag: academy{{{part1}{part2}")
-
-if __name__ == "__main__":
-    main()
-```
-
-### Execution Output
-
-```text
-$ python3 exploit.py ./dec
-[*] Emulating Dalvik register reuse in: ./dec/smali_classes3/com/example/picobank/MainActivity.smali
-[+] Extracted sequence: picoCTF{redacted_part1_
-[+] Extracted Hardcoded OTP: 9673
-[*] Submitting OTP to challenge service: http://xebec.cylabacademy.net:39382/verify-otp...
-[+] Full Flag Assembled: academy{redacted}
-```
-
----
-
-## Flag & Key Takeaways
-
-```text
-academy{redacted}
-```
-*(Flag redacted in accordance with competition disclosure guidelines)*
-
-1. **Understand Compiler Optimizations in Bytecode:** In Dalvik/Smali reversing, literal strings are not necessarily declared adjacent to their consumer instructions. Tracking register state transitions ensures fidelity.
-2. **Never Rely on Client-Side Security in Mobile Apps:** Sensitive data like OTPs, secret strings, or user credentials must never be hardcoded into APK bytecode or XML resources.
-3. **Data Encoding in UI Layers:** Application UI elements (like financial amounts, timestamps, or coordinates) can frequently be leveraged for steganographic concealment.
+## Bài học / pattern để tái sử dụng
+- **Link file có thể KHÔNG ở API description**: với instance on-demand, start rồi mới thấy web/URL phục vụ file. Luôn start + scrape trang index trước khi kết luận "không có file".
+- **Stego dữ liệu số**: "số tiền"/số liệu UI có thể là nhị phân/hex/ASCII ⇒ thử decode `int(x,2)`, hex, base...; hint "investigate transaction history" là chỉ điểm.
+- **Register reuse trong smali**: khi trích hằng số, phải đi theo luồng gán register (không chỉ regex dòng `const-string`); entry sau có thể tái dùng register của entry trước.
+- **Đọc URL/config trong APK**: host có thể là placeholder ("your server url") → lấy host:port thật từ instance, đừng mất thời gian tìm "secret URL" không tồn tại.
+- Flag gốc picoCTF dùng prefix `picoCTF{`; bản rehost CyLab thay bằng `academy{`.

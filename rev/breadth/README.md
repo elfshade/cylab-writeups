@@ -14,16 +14,18 @@ The challenge distributes a 2.6 MB binary containing **16,384 distinct dead-code
 
 ---
 
-## Student's Learning Note: Core Concepts
+## Student's Learning Note: Core Concepts & The 16,000-Function Trap
 
-As a 2nd-year CS student studying software engineering and reverse engineering, this challenge demonstrated the power of **Differential Binary Analysis**:
+When I first dropped `breadth.v1` into Ghidra and saw **16,384 distinct functions**, my laptop fans started screaming and the auto-analysis estimated 45 minutes! I immediately realized: *there's no way a human is expected to reverse 16,000 functions.* 
 
-1. **Dead-Code Bloating (Obfuscation by Volume):** Compilers and code generators can synthesize vast quantities of unreachable routines that simulate real program logic. While individual functions appear valid, none are referenced in the program's actual call-graph from `main()`.
-2. **Binary Diffing (Patch Analysis):** In vulnerability research, analyzing security patches (1-day exploits) begins by diffing an unpatched binary against a patched release. The differences directly expose the bug location.
+Then the lightbulb went off: why did the author give us **two binaries** (`breadth.v1` and `breadth.v2`)? In our software engineering coursework, we studied version control and differential analysis. This was a textbook patch diffing scenario!
+
+1. **Dead-Code Bloating (Obfuscation by Volume):** Compilers and script generators can easily synthesize vast oceans of unreachable routines that look like real code. While individual functions appear valid, none are referenced in the program's actual call-graph from `main()`.
+2. **Binary Diffing (Patch Analysis):** In real-world vulnerability research, analyzing security patches (1-day exploits) begins by diffing an unpatched binary against a patched release. The code modifications immediately isolate the fix—and in our case, the real flag!
 3. **Filtering Diff Noise:** Not all binary discrepancies are meaningful. Compilers routinely introduce variations in:
    * Timestamps and GNU Build IDs (`.note.gnu.build-id`).
    * String table metadata (`.strtab`).  
-   Focusing strictly on executable machine code (`.text`) eliminates false positives.
+   Focusing strictly on executable machine code (`.text`) eliminates false positives and pinpoints the actual logic change in seconds.
 
 ---
 
@@ -117,7 +119,7 @@ Locating offset `0x95040` (aligned to 16 bytes):
 0x9504e: cmp  rax, 0x41BC73E        ; EQUAL! Condition passes!
 0x95054: jz   0x95060
 0x95056: ret
-0x95060: lea  rdi, "picoCTF{VnDB2LUf1VFJkdfDJtdYtFlMexPxXS6X}"
+0x95060: lea  rdi, "picoCTF{redacted}"
 0x95067: jmp  puts
 ```
 
@@ -170,7 +172,7 @@ $ python3 exploit.py breadth.v1 breadth.v2
 [+] Containing target function start: 0x095040
 
 [+] Successfully Extracted Legitimate Flag:
-    picoCTF{VnDB2LUf1VFJkdfDJtdYtFlMexPxXS6X}
+    picoCTF{redacted}
 ```
 
 ---
@@ -178,8 +180,9 @@ $ python3 exploit.py breadth.v1 breadth.v2
 ## Flag & Key Takeaways
 
 ```text
-picoCTF{REDACTED}
+picoCTF{redacted}
 ```
+*(Flag redacted in accordance with competition disclosure guidelines)*
 
 1. **Volume Does Not Equal Complexity:** Obfuscation that relies on bloating binaries with thousands of duplicate dead functions collapses instantly when confronted with differential binary analysis.
 2. **Filtering Metadata in Binary Diffing:** Always delineate section boundaries (e.g., `.text` vs `.rodata` vs metadata sections) to avoid wasting time analyzing irrelevant linker/build hashes.

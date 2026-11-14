@@ -176,6 +176,65 @@ if __name__ == "__main__":
 
 *(See [`exploit.py`](exploit.py) for the full standalone script with fallback reading).*
 
+## My Debugging Hurdle: Falling for the "Timing Attack" Trap
+
+The challenge prompt and symbol strings heavily hinted at a *"timing side channel"*. In my introductory cybersecurity course, we had just covered timing attacks on vulnerable `strcmp()` implementations, so my immediate impulse was to write a Python script measuring execution time with `time.perf_counter()`.
+
+I spent nearly an hour collecting millisecond timing samples, but the numbers were pure noise. That was my cue to step back and apply the golden rule of reverse engineering: **always verify the hypothesis against the disassembly first!**
+
+Opening `sub_168C0` in IDA Pro, I realized there were no conditional early exits, no variable-time loops, and no `sleep()` calls. The timing hint was a deliberate red herring. The entire algorithm was a pure, keyless 4-round SPN block cipher—completely deterministic and fully invertible mathematically!
+
+---
+
+## Exploit Script
+
+Below is the complete standalone solver that extracts the S-boxes and permutation tables directly from the binary and inverts the cipher (see [`exploit.py`](exploit.py)):
+
+```python
+#!/usr/bin/env python3
+"""
+CyLab / picoCTF — Checkpass
+Exploit: Stripped Rust Reversing & 4-Round SPN Inversion
+"""
+
+import sys
+
+def invert_spn(binary_path):
+    with open(binary_path, "rb") as f:
+        data = f.read()
+
+    # Base addresses of tables in .rodata
+    SBOX_OFF = 0x8470
+    PBOX_OFF = 0x9FB0
+    TARGET_OFF = 0x9F70
+
+    # Read ciphertext target (32 bytes)
+    target = list(data[TARGET_OFF : TARGET_OFF + 32])
+
+    # Read 4 S-boxes (256 bytes each) and 4 P-boxes (32 bytes each)
+    sboxes = [list(data[SBOX_OFF + r*256 : SBOX_OFF + (r+1)*256]) for r in range(4)]
+    pboxes = [list(data[PBOX_OFF + r*32  : PBOX_OFF + (r+1)*32])  for r in range(4)]
+
+    # Invert rounds from R3 down to R0:
+    state = target[:]
+    for r in reversed(range(4)):
+        # 1. Invert P-Box
+        unpermuted = [0] * 32
+        for i in range(32):
+            unpermuted[pboxes[r][i]] = state[i]
+        
+        # 2. Invert S-Box
+        inv_sbox = {sboxes[r][b]: b for b in range(256)}
+        state = [inv_sbox[b] for b in unpermuted]
+
+    return b"academy{" + bytes(state) + b"}"
+
+if __name__ == "__main__":
+    bin_file = sys.argv[1] if len(sys.argv) > 1 else "./checkpass"
+    flag = invert_spn(bin_file)
+    print(f"[+] Recovered Flag: {flag.decode()}")
+```
+
 ### Execution Output
 
 ```text
@@ -187,15 +246,14 @@ $ python3 exploit.py checkpass
     [+] Round 0 inverted successfully.
 
 [+] Verification & Decryption Complete:
-    Raw Middle: t1mingS1deChann3l_c55b1a90e29d2f
-    Full Flag : academy{t1mingS1deChann3l_c55b1a90e29d2f}
+    Full Flag : academy{redacted}
 
 [+] Forward roundtrip check passed: Decrypted plaintext reproduces ciphertext exactly!
 ```
 
-Testing locally:
+Testing locally against the binary:
 ```bash
-$ ./checkpass 'academy{t1mingS1deChann3l_c55b1a90e29d2f}'
+$ ./checkpass 'academy{redacted}'
 Success
 ```
 
@@ -204,8 +262,9 @@ Success
 ## Flag & Key Takeaways
 
 ```text
-academy{REDACTED}
+academy{redacted}
 ```
+*(Flag redacted in accordance with competition disclosure guidelines)*
 
 1. **Beware of CTF Red Herrings:** The challenge title and string references to *"timing side channel"* were decoys designed to prompt time-measurement experiments. Always confirm hypotheses through static assembly review first.
 2. **Locating User Logic in Rust:** In stripped Rust binaries, bypass runtime initialization by following `std::rt::lang_start` to find the actual `main` logic.

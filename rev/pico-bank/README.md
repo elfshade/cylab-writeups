@@ -146,10 +146,10 @@ if __name__ == "__main__":
 ```text
 $ python3 exploit.py ./dec
 [*] Emulating Dalvik register reuse in: ./dec/smali_classes3/com/example/picobank/MainActivity.smali
-[+] Extracted sequence: picoCTF{1_l13d_4b0ut_b31ng_
+[+] Extracted sequence: picoCTF{redacted_part1_
 [+] Extracted Hardcoded OTP: 9673
 [*] Submitting OTP to challenge service: http://xebec.cylabacademy.net:39382/verify-otp...
-[+] Full Flag Assembled: academy{1_l13d_4b0ut_b31ng_s3cur3d_m0b1l3_l0g1n_13fbb223}
+[+] Full Flag Assembled: academy{redacted}
 ```
 
 ---
@@ -157,8 +157,9 @@ $ python3 exploit.py ./dec
 ## Flag & Key Takeaways
 
 ```text
-academy{REDACTED}
+academy{redacted}
 ```
+*(Flag redacted in accordance with competition disclosure guidelines)*
 
 1. **Understand Compiler Optimizations in Bytecode:** In Dalvik/Smali reversing, literal strings are not necessarily declared adjacent to their consumer instructions. Tracking register state transitions ensures fidelity.
 2. **Never Rely on Client-Side Security in Mobile Apps:** Sensitive data like OTPs, secret strings, or user credentials must never be hardcoded into APK bytecode or XML resources.

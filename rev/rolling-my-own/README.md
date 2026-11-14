@@ -146,8 +146,9 @@ $ python3 exploit.py remote chatelaine.cylabacademy.net 42233
 ## Flag & Key Takeaways
 
 ```text
-academy{REDACTED}
+academy{redacted}
 ```
+*(Flag redacted in accordance with competition disclosure guidelines)*
 
 1. **JIT Code Generation is Inherent Code Execution:** If user input is transformed into executable memory through any deterministic pipeline (even cryptographically hashed), the author must ensure that the output machine instructions cannot be coerced into unauthorized control transfer.
 2. **Hash Preimage Slicing:** A 128-bit hash function loses its collision and preimage resistance properties when truncated to small slices (32 bits).

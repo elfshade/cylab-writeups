@@ -1,66 +1,72 @@
 # CyLab Security Academy & picoCTF Writeups
 
-Tổng hợp writeup cá nhân, phân tích root cause và mã khai thác (exploit script) các challenge từ **CyLab Security Academy** và **picoCTF**.
+A curated collection of vulnerability analyses, reverse engineering notes, and reproducible exploit scripts from **CyLab Security Academy** (including ported picoCTF challenges).
 
-Tập trung vào 2 mảng chính:
-- **Binary Exploitation (Pwn)**: Stack overflow, Format String, Heap Use-After-Free (UAF), glibc tcache internals, Ret2libc, 16-byte stack alignment.
-- **Reverse Engineering (Rev)**: Custom VM bytecode emulation, Graph BFS search, Rust binary reversing, SPN S-Box inversion, JIT shellcode synthesis, Binary diffing.
+All writeups strictly adhere to the standardized **TryHackMe `pwn101` architectural motif**:
+* **`## TL;DR`**: Concise executive summary of vulnerability root causes, exploit vectors, and hurdles.
+* **`## Recon`**: Comprehensive metadata analysis with `file` and `checksec`.
+* **`## Static Analysis & Reversing`**: Decompilation walkthroughs, disassembly tracings, and ASCII memory/stack diagrams.
+* **`## Dynamic Analysis & Exploitation Strategy`**: In-depth analysis of runtime traps (alignment, buffering, register reuse, state space).
+* **`## Exploit`**: Robust, standalone Python / `pwntools` exploit scripts.
+* **`## Flag`**: Verified output proof with redacted flag tokens.
+* **`## Key Takeaways & Lessons`**: Concrete technical lessons and defensive principles.
 
-> **Lưu ý:** Toàn bộ flag trên các bài viết công khai đều được ẩn theo định dạng `academy{redacted}` / `picoCTF{redacted}`.
+> [!NOTE]
+> All flag tokens and confidential infrastructure credentials have been redacted (`academy{redacted}` / `picoCTF{redacted}`) in compliance with competition disclosure guidelines.
 
 ---
 
-## Cấu trúc thư mục
+## Repository Structure
 
 ```text
 cylab-writeups/
-├── pwn/                              # Binary Exploitation
-│   ├── babygame01/                   # 2D Array OOB write, ghi đè biến lân cận trên stack
-│   ├── buffer-overflow-3/            # Brute-force static stack canary từng byte (linear search)
-│   ├── heres-a-libc/                 # 64-bit Ret2libc, leak GOT qua puts, 16-byte stack alignment
-│   ├── stonks/                       # Format string leak bộ nhớ stack qua %p, unpack little-endian
-│   └── unsubscriptions-are-free/     # Heap Use-After-Free (UAF) & tái sử dụng chunk qua glibc tcache
-├── rev/                              # Reverse Engineering
-│   ├── breadth/                      # Binary diffing (cmp -l) & khoanh vùng 16K hàm dead-code
-│   ├── checkpass/                    # Reverse stripped Rust binary, giải mã ngược 4 vòng SPN S-Box
-│   ├── matrix/                       # Forth-like VM bytecode emulation, giải mê cung bằng BFS
-│   ├── pico-bank/                    # Reverse Android APK (Smali), Dalvik register reuse & stego
-│   └── rolling-my-own/               # JIT shellcode synthesis, brute-force MD5 preimage với OpenMP
+├── pwn/                              # Binary Exploitation Challenges
+│   ├── babygame01/                   # 2D array OOB negative indexing into stack variable
+│   ├── buffer-overflow-3/            # Byte-by-byte static canary brute force (O(256 * N)) + ret2win
+│   ├── heres-a-libc/                 # 64-bit Ret2libc, GOT puts leak, 16-byte stack alignment
+│   ├── stonks/                       # Format string stack disclosure (%p chain) & Little-Endian unpacking
+│   └── unsubscriptions-are-free/     # 32-bit Heap UAF, glibc tcache recycling & stdio buffering fix
+├── rev/                              # Reverse Engineering Challenges
+│   ├── breadth/                      # Binary diffing (cmp -l) & isolating 16K dead-code functions
+│   ├── checkpass/                    # Stripped Rust reversing & 4-round SPN S-Box/Permutation inversion
+│   ├── matrix/                       # Forth-like VM bytecode emulation & state-space BFS maze solver
+│   ├── pico-bank/                    # Android Smali reversing, Dalvik register tracking & binary stego
+│   └── rolling-my-own/               # JIT shellcode synthesis & OpenMP multithreaded MD5 preimage mining
 └── README.md
 ```
 
 ---
 
-## Danh sách Writeup
+## Challenge Index
 
 ### 1. Binary Exploitation (Pwn)
 
-| # | Bài toán | Nền tảng | Độ khó | Kỹ thuật / Lỗ hổng chính | Writeup |
+| # | Challenge | Platform | Difficulty | Core Vulnerability / Technique | Writeup |
 |---|---|---|---|---|---|
-| 1 | [Unsubscriptions Are Free](https://play.picoctf.org/) | CyLab / picoCTF | Medium | Heap Use-After-Free (UAF), glibc tcache LIFO reuse, stdio buffering trap | [Đọc writeup](pwn/unsubscriptions-are-free/README.md) |
-| 2 | [Here's a LIBC](https://play.picoctf.org/) | CyLab / picoCTF | Medium | 64-bit Ret2libc, leak GOT qua `puts`, x86-64 stack alignment (16-byte RSP) | [Đọc writeup](pwn/heres-a-libc/README.md) |
-| 3 | [buffer overflow 3](https://play.picoctf.org/) | CyLab / picoCTF | Medium | Brute-force static canary từng byte ($O(256 \times N)$ thay vì $O(256^N)$) | [Đọc writeup](pwn/buffer-overflow-3/README.md) |
-| 4 | [Stonks](https://play.picoctf.org/) | CyLab / picoCTF | Easy | Format string (`%p`) leak stack memory, giải mã Little-Endian word | [Đọc writeup](pwn/stonks/README.md) |
-| 5 | [babygame01](https://play.picoctf.org/) | CyLab / picoCTF | Easy | 2D Array Out-Of-Bounds (OOB) write, di chuyển toạ độ âm ghi đè `has_flag` | [Đọc writeup](pwn/babygame01/README.md) |
+| 1 | [Unsubscriptions Are Free](https://play.picoctf.org/) | CyLab / picoCTF | Medium | 32-bit Heap Use-After-Free (UAF), glibc tcache recycling, stdio buffering synchronization | [Writeup](pwn/unsubscriptions-are-free/README.md) |
+| 2 | [Here's a LIBC](https://play.picoctf.org/) | CyLab / picoCTF | Medium | 64-bit Ret2libc, GOT `puts` leak, AMD64 ABI 16-byte stack alignment (`movaps` crash fix) | [Writeup](pwn/heres-a-libc/README.md) |
+| 3 | [buffer overflow 3](https://play.picoctf.org/) | CyLab / picoCTF | Medium | Static stack canary byte-by-byte brute force ($O(256 \times N)$ linear search) + ret2win | [Writeup](pwn/buffer-overflow-3/README.md) |
+| 4 | [Stonks](https://play.picoctf.org/) | CyLab / picoCTF | Easy | Format string (`%p`) stack memory disclosure, little-endian word reconstruction | [Writeup](pwn/stonks/README.md) |
+| 5 | [babygame01](https://play.picoctf.org/) | CyLab / picoCTF | Easy | 2D Array Out-Of-Bounds (OOB) write, negative indexing overwriting `has_flag` | [Writeup](pwn/babygame01/README.md) |
 
 ---
 
 ### 2. Reverse Engineering (Rev)
 
-| # | Bài toán | Nền tảng | Độ khó | Kỹ thuật / Lỗ hổng chính | Writeup |
+| # | Challenge | Platform | Difficulty | Core Concept / Reversing Technique | Writeup |
 |---|---|---|---|---|---|
-| 1 | [MATRIX](https://play.picoctf.org/) | CyLab / picoCTF | Hard | Viết interpreter cho Forth-like VM, BFS trên không gian trạng thái tìm đường | [Đọc writeup](rev/matrix/README.md) |
-| 2 | [Checkpass](https://learn.cylabacademy.org/) | CyLab / picoCTF | Hard | Reverse stripped Rust binary, giải mã ngược 4 vòng SPN (S-Box + Permutation) | [Đọc writeup](rev/checkpass/README.md) |
-| 3 | [Rolling My Own](https://learn.cylabacademy.org/) | CyLab / picoCTF | Hard | JIT shellcode synthesis, brute-force MD5 preimage song song bằng C + OpenMP | [Đọc writeup](rev/rolling-my-own/README.md) |
-| 4 | [Pico Bank](https://learn.cylabacademy.org/) | CyLab / picoCTF | Medium | Reverse Android APK Smali, xử lý bẫy Dalvik register reuse, decode stego nhị phân | [Đọc writeup](rev/pico-bank/README.md) |
-| 5 | [Breadth](https://play.picoctf.org/) | CyLab / picoCTF | Hard | Differential binary analysis (patch diffing v1/v2), lọc nhiễu 16K hàm dead-code | [Đọc writeup](rev/breadth/README.md) |
+| 1 | [MATRIX](https://play.picoctf.org/) | CyLab / picoCTF | Hard | Forth-like custom VM bytecode emulation, BFS state-space graph search | [Writeup](rev/matrix/README.md) |
+| 2 | [Checkpass](https://learn.cylabacademy.org/) | CyLab / picoCTF | Hard | Stripped Rust reversing, 4-round SPN (Substitution-Permutation Network) mathematical inversion | [Writeup](rev/checkpass/README.md) |
+| 3 | [Rolling My Own](https://learn.cylabacademy.org/) | CyLab / picoCTF | Hard | JIT shellcode synthesis, multithreaded OpenMP MD5 partial preimage mining in native C | [Writeup](rev/rolling-my-own/README.md) |
+| 4 | [Pico Bank](https://learn.cylabacademy.org/) | CyLab / picoCTF | Medium | Android APK Smali analysis, Dalvik virtual register reuse emulation, binary UI steganography | [Writeup](rev/pico-bank/README.md) |
+| 5 | [Breadth](https://play.picoctf.org/) | CyLab / picoCTF | Hard | Differential binary analysis (patch diffing v1 vs v2), filtering 16K dead-code decoy functions | [Writeup](rev/breadth/README.md) |
 
 ---
 
-## Môi trường & Công cụ
+## Toolchain & Environment
 
-* **Hệ điều hành:** Linux x86_64
-* **Disassembly & Decompilation:** IDA Pro, Ghidra, `objdump`
-* **Dynamic Debugging:** GDB với plugin `pwndbg`
-* **Exploitation / Scripting:** Python 3, `pwntools`
-* **Reconnaissance & Static Analysis:** `file`, `checksec`, `strings`, `nm`, `readelf`, `cmp`
+* **Operating System:** Linux x86_64 (Arch Linux)
+* **Static Analysis & Decompilation:** IDA Pro, Ghidra, `readelf`, `nm`, `strings`
+* **Dynamic Analysis & Debugging:** GDB with `pwndbg` plugin
+* **Exploitation & Scripting:** Python 3, `pwntools`, `requests`
+* **Binary Diffing & Compilation:** `cmp`, `objdump`, `gcc` with `-fopenmp`

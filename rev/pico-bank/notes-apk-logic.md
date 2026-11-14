@@ -39,7 +39,7 @@ const-string v2, "tricky1990"   ; password
 - **What the server returns after correct OTP:** `{"success":true, ..., "flag":"<part2>", "hint":"..."}` where part2 is the closing suffix ending in `}` (e.g. `s3cur3d_m0b1l3_l0g1n_f59ef39a}`; hash varies per instance).
 
 ## Full flag assembly
-`<APK part1>` + `<server flag part2>` = e.g. `picoCTF{1_l13d_4b0ut_b31ng_s3cur3d_m0b1l3_l0g1n_f59ef39a}`.
+`<APK part1>` + `<server flag part2>` = e.g. `picoCTF{1_l13d_4b0ut_b31ng_s3cur3d_...}`.
 NOTE: embedded prefix is literally `picoCTF{` not `academy{`. If the CyLab instance expects `academy{...}`, the inner content is `1_l13d_4b0ut_b31ng_` + server suffix; orchestrator decides the prefix.
 
 ## Secrets/keys

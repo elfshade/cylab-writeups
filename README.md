@@ -154,15 +154,77 @@ cylab-writeups/
 
 ---
 
-### 3. Reverse Engineering (Rev)
+### 3. Reverse Engineering (Rev) — 58 Challenges
 
-| # | Challenge | Platform | Difficulty | Core Concept / Reversing Technique | Writeup | Exploit |
-|---|---|---|---|---|---|---|
-| 1 | [MATRIX](https://play.picoctf.org/) | CyLab / picoCTF | Hard | Forth-like custom VM bytecode emulation, BFS state-space graph search | [Writeup](rev/matrix/README.md) | [exploit.py](rev/matrix/exploit.py) |
-| 2 | [Checkpass](https://learn.cylabacademy.org/) | CyLab / picoCTF | Hard | Stripped Rust reversing, 4-round SPN (Substitution-Permutation Network) mathematical inversion | [Writeup](rev/checkpass/README.md) | [exploit.py](rev/checkpass/exploit.py) |
-| 3 | [Rolling My Own](https://learn.cylabacademy.org/) | CyLab / picoCTF | Hard | JIT shellcode synthesis, multithreaded OpenMP MD5 partial preimage mining in native C | [Writeup](rev/rolling-my-own/README.md) | [exploit.py](rev/rolling-my-own/exploit.py) |
-| 4 | [Pico Bank](https://learn.cylabacademy.org/) | CyLab / picoCTF | Medium | Android APK Smali analysis, Dalvik virtual register reuse emulation, binary UI steganography | [Writeup](rev/pico-bank/README.md) | [exploit.py](rev/pico-bank/exploit.py) |
-| 5 | [Breadth](https://play.picoctf.org/) | CyLab / picoCTF | Hard | Differential binary analysis (patch diffing v1 vs v2), filtering 16K dead-code decoy functions | [Writeup](rev/breadth/README.md) | [exploit.py](rev/breadth/exploit.py) |
+#### 3.1 Reverse Engineering — Difficulty 2 (Foundation & Intermediate, 44 Challenges)
+
+| # | Challenge | Platform / ID | Core Concept / Reversing Technique | Writeup | Exploit |
+|---|---|---|---|---|---|
+| 1 | [The Add/On Trap](https://play.picoctf.org/) | CyLab RE #527 | Browser add-on native component reversing & XOR key schedule | [Writeup](rev/addon-trap/README.md) | [exploit.py](rev/addon-trap/exploit.py) |
+| 2 | [ASCII FTW](https://play.picoctf.org/) | CyLab #389 | Disassembly analysis of sequential `movb` immediate stack writes | [Writeup](rev/ascii-ftw/README.md) | [exploit.py](rev/ascii-ftw/exploit.py) |
+| 3 | [asm1](https://play.picoctf.org/) | CyLab #20 / picoCTF | x86 32-bit assembly conditional branch tracing (`cmp`, `jg`, `sub`) | [Writeup](rev/asm1/README.md) | [exploit.py](rev/asm1/exploit.py) |
+| 4 | [Autorev 1](https://play.picoctf.org/) | CyLab RE (Diff 2) | Linear equation system recovery from stripped ELF binary | [Writeup](rev/autorev1/README.md) | [exploit.py](rev/autorev1/exploit.py) |
+| 5 | [Bbbbloat](https://play.picoctf.org/) | CyLab #255 | Stripped x86_64 ELF decompilation, integer branch (`549255`) & rotation cipher | [Writeup](rev/bbbbloat/README.md) | [exploit.py](rev/bbbbloat/exploit.py) |
+| 6 | [Bit-O-Asm-1](https://play.picoctf.org/) | CyLab #391 | Static disassembly analysis of single register assignment (`mov eax, 0x30`) | [Writeup](rev/bit-o-asm-1/README.md) | [exploit.py](rev/bit-o-asm-1/exploit.py) |
+| 7 | [Bit-O-Asm-2](https://play.picoctf.org/) | CyLab #392 | Stack local variable tracking (`mov [rbp-4], 0x471; mov eax, [rbp-4]`) | [Writeup](rev/bit-o-asm-2/README.md) | [exploit.py](rev/bit-o-asm-2/exploit.py) |
+| 8 | [Bit-O-Asm-3](https://play.picoctf.org/) | CyLab #393 | Arithmetic pipeline tracing (`imul eax, [rbp-8]; add eax, [rbp-4]`) | [Writeup](rev/bit-o-asm-3/README.md) | [exploit.py](rev/bit-o-asm-3/exploit.py) |
+| 9 | [bloat.py](https://play.picoctf.org/) | CyLab #256 | Deobfuscating obfuscated Python script, extracting hidden password checks | [Writeup](rev/bloat-py/README.md) | [exploit.py](rev/bloat-py/exploit.py) |
+| 10 | [Bypass Me](https://play.picoctf.org/) | CyLab RE (Diff 2) | Authentication branch bypass in native binary, patch analysis | [Writeup](rev/bypass-me/README.md) | [exploit.py](rev/bypass-me/exploit.py) |
+| 11 | [Chronohack](https://play.picoctf.org/) | CyLab RE (Diff 2) | Time-based PRNG state reconstruction, backward seed synchronization | [Writeup](rev/chronohack/README.md) | [exploit.py](rev/chronohack/exploit.py) |
+| 12 | [crackme-py](https://play.picoctf.org/) | CyLab #175 | Python ROT47 cipher analysis and invocation of hidden `decode_secret` | [Writeup](rev/crackme-py/README.md) | [exploit.py](rev/crackme-py/exploit.py) |
+| 13 | [file-run1](https://play.picoctf.org/) | CyLab #266 | Executable permission analysis and terminal execution parameter inspection | [Writeup](rev/file-run1/README.md) | [exploit.py](rev/file-run1/exploit.py) |
+| 14 | [file-run2](https://play.picoctf.org/) | CyLab #267 | CLI argument passing inspection (`./run Hello!`) through string analysis | [Writeup](rev/file-run2/README.md) | [exploit.py](rev/file-run2/exploit.py) |
+| 15 | [Flag Hunters](https://play.picoctf.org/) | CyLab RE (Diff 2) | Custom bytecode virtual machine interpreter analysis and opcode tracing | [Writeup](rev/flag-hunters/README.md) | [exploit.py](rev/flag-hunters/exploit.py) |
+| 16 | [Fresh Java](https://play.picoctf.org/) | CyLab #271 | Java class bytecode decompilation (`javap`/`jadx`), ordered character comparison table | [Writeup](rev/fresh-java/README.md) | [exploit.py](rev/fresh-java/exploit.py) |
+| 17 | [Gatekeeper](https://play.picoctf.org/) | CyLab RE (Diff 2) | Multi-stage password checking function analysis and static constraint solving | [Writeup](rev/gatekeeper/README.md) | [exploit.py](rev/gatekeeper/exploit.py) |
+| 18 | [GDB Test Drive](https://play.picoctf.org/) | CyLab #273 | GDB debugging, breakpoint placement and skipping `sleep()` delay loop | [Writeup](rev/gdb-test-drive/README.md) | [exploit.py](rev/gdb-test-drive/exploit.py) |
+| 19 | [Hidden Cipher 1](https://play.picoctf.org/) | CyLab RE (Diff 2) | XOR keystream recovery from embedded cipher routine | [Writeup](rev/hiddencipher/README.md) | [exploit.py](rev/hiddencipher/exploit.py) |
+| 20 | [Hidden Cipher 2](https://play.picoctf.org/) | CyLab RE (Diff 2) | Multi-byte cyclic XOR key recovery and ciphertext decryption | [Writeup](rev/hiddencipher2/README.md) | [exploit.py](rev/hiddencipher2/exploit.py) |
+| 21 | [keygenme-py](https://play.picoctf.org/) | CyLab #121 | Python license validator reversing: selective SHA-256 digest character extraction | [Writeup](rev/keygenme-py/README.md) | [exploit.py](rev/keygenme-py/exploit.py) |
+| 22 | [M1n10n'5_53cr37](https://play.picoctf.org/) | CyLab RE (Diff 2) | Android APK decompilation (`jadx`), native asset decryption and intent analysis | [Writeup](rev/minions-apk/README.md) | [exploit.py](rev/minions-apk/exploit.py) |
+| 23 | [patchme.py](https://play.picoctf.org/) | CyLab #287 | Python conditional bypass, extracting encrypted payload and hardcoded key | [Writeup](rev/patchme/README.md) | [exploit.py](rev/patchme/exploit.py) |
+| 24 | [perplexed](https://play.picoctf.org/) | CyLab RE (Diff 2) | Obfuscated control flow graph untangling, recovering character transformation matrix | [Writeup](rev/perplexed/README.md) | [exploit.py](rev/perplexed/exploit.py) |
+| 25 | [Picker I](https://play.picoctf.org/) | CyLab #400 | Python `eval()` arbitrary function dispatch, calling hidden `win()` routine | [Writeup](rev/picker-i/README.md) | [exploit.py](rev/picker-i/exploit.py) |
+| 26 | [Picker III](https://play.picoctf.org/) | CyLab #402 | Function table index manipulation, overwriting function pointer variable with `win` | [Writeup](rev/picker-iii/README.md) | [exploit.py](rev/picker-iii/exploit.py) |
+| 27 | [Pico Bank](https://play.picoctf.org/) | CyLab #529 | Android APK Smali analysis, Dalvik virtual register reuse emulation | [Writeup](rev/pico-bank/README.md) | [exploit.py](rev/pico-bank/exploit.py) |
+| 28 | [Quantum Scrambler](https://play.picoctf.org/) | CyLab RE (Diff 2) | Inverting multi-round bitwise permutation, shift, and XOR diffusion network | [Writeup](rev/quantum-scrambler/README.md) | [exploit.py](rev/quantum-scrambler/exploit.py) |
+| 29 | [Reverse](https://play.picoctf.org/) | CyLab #372 | Disassembly of string reversal algorithm, static extraction of flag buffer | [Writeup](rev/reverse-372/README.md) | [exploit.py](rev/reverse-372/exploit.py) |
+| 30 | [Safe Opener](https://play.picoctf.org/) | CyLab #294 | Java class reversing, base64 encoded password string decoding | [Writeup](rev/safe-opener/README.md) | [exploit.py](rev/safe-opener/exploit.py) |
+| 31 | [Safe Opener 2](https://play.picoctf.org/) | CyLab #375 | Stripped Java `.class` string table recovery, Base64 decoded flag extraction | [Writeup](rev/safe-opener-2/README.md) | [exploit.py](rev/safe-opener-2/exploit.py) |
+| 32 | [Secure Password Database](https://play.picoctf.org/) | CyLab RE (Diff 2) | SQLite schema and embedded hashing algorithm analysis in stripped native binary | [Writeup](rev/secure-password-database/README.md) | [exploit.py](rev/secure-password-database/exploit.py) |
+| 33 | [Silent Stream](https://play.picoctf.org/) | CyLab RE (Diff 2) | Audio/data stream parsing, recovering hidden binary payload from carrier | [Writeup](rev/silent-stream/README.md) | [exploit.py](rev/silent-stream/exploit.py) |
+| 34 | [Tap into Hash](https://play.picoctf.org/) | CyLab RE (Diff 2) | Hash lookup table inversion and dictionary matching | [Writeup](rev/tap-into-hash/README.md) | [exploit.py](rev/tap-into-hash/exploit.py) |
+| 35 | [Transformation](https://play.picoctf.org/) | CyLab #104 | UTF-16 16-bit packed char unpacking: extracting high byte (`>>8`) and low byte (`&0xFF`) | [Writeup](rev/transformation/README.md) | [exploit.py](rev/transformation/exploit.py) |
+| 36 | [unpackme.py](https://play.picoctf.org/) | CyLab #314 | De-obfuscating Python payload, extracting base64 encoded Fernet decryption key | [Writeup](rev/unpackme-py/README.md) | [exploit.py](rev/unpackme-py/exploit.py) |
+| 37 | [vault-door-training](https://play.picoctf.org/) | CyLab / picoCTF 2019 | Java source code inspection, extracting hardcoded plaintext string parameter | [Writeup](rev/vault-door-training/README.md) | [exploit.py](rev/vault-door-training/exploit.py) |
+| 38 | [vault-door-1](https://play.picoctf.org/) | CyLab / picoCTF 2019 | Java source code analysis, reconstructing 32-character string from sparse index checks | [Writeup](rev/vault-door-1/README.md) | [exploit.py](rev/vault-door-1/exploit.py) |
+| 39 | [vault-door-3](https://play.picoctf.org/) | CyLab / picoCTF 2019 | Inverting character array shuffling algorithm across four distinct loop stages | [Writeup](rev/vault-door-3/README.md) | [exploit.py](rev/vault-door-3/exploit.py) |
+| 40 | [vault-door-4](https://play.picoctf.org/) | CyLab / picoCTF 2019 | Decoding composite byte representation array: decimal, hex (`0x`), octal (`0`), and raw chars | [Writeup](rev/vault-door-4/README.md) | [exploit.py](rev/vault-door-4/exploit.py) |
+| 41 | [vault-door-5](https://play.picoctf.org/) | CyLab / picoCTF 2019 | Two-stage encoding inversion: URL decoding followed by standard Base64 decoding | [Writeup](rev/vault-door-5/README.md) | [exploit.py](rev/vault-door-5/exploit.py) |
+| 42 | [vault-door-6](https://play.picoctf.org/) | CyLab / picoCTF 2019 | Inverting byte-wise XOR masking (`c ^ 0x55 == expected`) across 32 password bytes | [Writeup](rev/vault-door-6/README.md) | [exploit.py](rev/vault-door-6/exploit.py) |
+| 43 | [weirdSnake](https://play.picoctf.org/) | CyLab RE (Diff 2) | Python bytecode disassembly analysis, reconstructing snake game state and flag array | [Writeup](rev/weirdsnake/README.md) | [exploit.py](rev/weirdsnake/exploit.py) |
+| 44 | [WinAntiDbg0x300](https://play.picoctf.org/) | CyLab RE (Diff 2) | Windows PE32 anti-debugging bypass: patching `IsDebuggerPresent` and PEB | [Writeup](rev/winantidbg0x300/README.md) | [exploit.py](rev/winantidbg0x300/exploit.py) |
+
+---
+
+#### 3.2 Reverse Engineering — Difficulty 3 (Advanced Reversing, 14 Challenges)
+
+| # | Challenge | Platform / ID | Core Concept / Reversing Technique | Writeup | Exploit |
+|---|---|---|---|---|---|
+| 1 | [B1ll_Gat35](https://play.picoctf.org/) | CyLab #57 | 32-bit ELF reversing, key validation algorithm and linear constraint solver | [Writeup](rev/b1ll-gat35/README.md) | [exploit.py](rev/b1ll-gat35/exploit.py) |
+| 2 | [Breadth](https://play.picoctf.org/) | CyLab / picoCTF | Differential binary analysis (patch diffing v1 vs v2), filtering 16K dead-code decoy functions | [Writeup](rev/breadth/README.md) | [exploit.py](rev/breadth/exploit.py) |
+| 3 | [Checkpass](https://play.picoctf.org/) | CyLab #149 | Stripped Rust reversing, 4-round SPN (Substitution-Permutation Network) mathematical inversion | [Writeup](rev/checkpass/README.md) | [exploit.py](rev/checkpass/exploit.py) |
+| 4 | [Easy as GDB](https://play.picoctf.org/) | CyLab #122 | Automated GDB byte-by-byte flag oracle, hardware watchpoints & breakpoint scripting | [Writeup](rev/easy-as-gdb/README.md) | [exploit.py](rev/easy-as-gdb/exploit.py) |
+| 5 | [Forky](https://play.picoctf.org/) | CyLab #24 | Multi-process fork tree analysis, IPC shared memory increment simulation ($4 \times 10^9$) | [Writeup](rev/forky/README.md) | [exploit.py](rev/forky/exploit.py) |
+| 6 | [Keygenme](https://play.picoctf.org/) | CyLab RE (Diff 3) | Reverse engineering license validation algorithm, dynamic key generator creation | [Writeup](rev/keygenme/README.md) | [exploit.py](rev/keygenme/exploit.py) |
+| 7 | [MATRIX](https://play.picoctf.org/) | CyLab #222 / picoMini | Forth-like custom VM bytecode emulation, BFS state-space graph search | [Writeup](rev/matrix/README.md) | [exploit.py](rev/matrix/exploit.py) |
+| 8 | [Need For Speed](https://play.picoctf.org/) | CyLab #39 | SIGALRM timer bypass, binary patching or GDB instruction redirection to `decrypt_flag()` | [Writeup](rev/need-for-speed/README.md) | [exploit.py](rev/need-for-speed/exploit.py) |
+| 9 | [not crypto](https://play.picoctf.org/) | CyLab #222 / picoMini | Obfuscated AES keystream decoupling: input-independent state recovery via LD_PRELOAD hook | [Writeup](rev/not-crypto/README.md) | [run.sh](rev/not-crypto/run.sh) |
+| 10 | [OTP Implementation](https://play.picoctf.org/) | CyLab #92 | Custom finite alphabet `jumble()` permutation bijection inversion and XOR decryption | [Writeup](rev/otp-implementation/README.md) | [exploit.py](rev/otp-implementation/exploit.py) |
+| 11 | [Picker II](https://play.picoctf.org/) | CyLab #401 | Python `eval()` filter bypass: calling `print(open('flag.txt').read())` without forbidden `win` | [Writeup](rev/picker-ii/README.md) | [exploit.py](rev/picker-ii/exploit.py) |
+| 12 | [Powershelly](https://play.picoctf.org/) | CyLab #119 | PowerShell 5x264 bit-matrix unscrambler, inverting cumulative XOR and linear probing | [Writeup](rev/powershelly/README.md) | [exploit.py](rev/powershelly/exploit.py) |
+| 13 | [reverse_cipher](https://play.picoctf.org/) | CyLab #79 | Parity-dependent byte transformation inversion: even index `-5`, odd index `+2` | [Writeup](rev/reverse-cipher/README.md) | [exploit.py](rev/reverse-cipher/exploit.py) |
+| 14 | [Rolling My Own](https://play.picoctf.org/) | CyLab #151 | JIT shellcode synthesis, multithreaded OpenMP MD5 partial preimage mining in native C | [Writeup](rev/rolling-my-own/README.md) | [exploit.py](rev/rolling-my-own/exploit.py) |
 
 ---
 
